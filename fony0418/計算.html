@@ -1,0 +1,1088 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>每日熱量與六大類食物份數計算器</title>
+  <style>
+    body {
+      font-family: Arial, 'Noto Sans TC', sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      background-color: #f4f4f4;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 30px;
+    }
+    .container {
+      background: #fff;
+      padding: 25px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    label {
+      display: block;
+      margin: 15px 0 5px;
+      font-weight: bold;
+      color: #444;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 15px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 16px;
+    }
+    .button-group {
+      display: flex;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    button {
+      background-color: #28a745;
+      color: white;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      flex: 1;
+      font-size: 16px;
+    }
+    button.reset {
+      background-color: #6c757d;
+    }
+    button.print {
+      background-color: #007bff;
+    }
+    button:hover {
+      background-color: #218838;
+    }
+    button.reset:hover {
+      background-color: #5a6268;
+    }
+    button.print:hover {
+      background-color: #0056b3;
+    }
+    #result {
+      margin-top: 30px;
+      padding: 20px;
+      background-color: #f8f9fa;
+      border-radius: 8px;
+      display: none;
+      box-sizing: border-box;
+    }
+    #resultTitle {
+      font-size: 24px;
+      color: #333;
+      margin-bottom: 25px;
+      text-align: center;
+    }
+    .error {
+      color: #dc3545;
+      font-size: 14px;
+      display: none;
+      margin-bottom: 15px;
+      padding: 10px;
+      background: #f8d7da;
+      border-radius: 4px;
+    }
+    .section {
+      margin-top: 25px;
+      padding-top: 15px;
+      border-top: 1px solid #dee2e6;
+    }
+    .info-block {
+      background: #fff;
+      padding: 15px;
+      border-radius: 6px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+      margin-bottom: 20px;
+    }
+    .info-block dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .info-block dt {
+      font-weight: bold;
+      color: #555;
+    }
+    .info-block dd {
+      margin: 0;
+      color: #007bff;
+    }
+    .portion-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 10px;
+    }
+    .portion-list li {
+      display: flex;
+      justify-content: space-between;
+      padding: 12px;
+      background: #f1f3f5;
+      border-radius: 6px;
+      align-items: center;
+    }
+    .portion-list li strong {
+      flex: 1;
+      color: #333;
+    }
+    .portion-list li span {
+      color: #007bff;
+      font-weight: bold;
+      margin-right: 10px;
+    }
+    .portion-list li small {
+      flex: 2;
+      color: #666;
+    }
+    .advice-block {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+    }
+    .advice-block.diet {
+      border-left: 4px solid #28a745;
+    }
+    .advice-block.bmi {
+      border-left: 4px solid #007bff;
+    }
+    .advice-block.portion {
+      border-left: 4px solid #fd7e14;
+      display: none;
+    }
+    .advice-block.portion.show {
+      display: block;
+    }
+    .advice-block h4 {
+      font-size: 18px;
+      margin: 0 0 10px;
+      color: #333;
+    }
+    .advice-block p {
+      margin: 0;
+      color: #444;
+    }
+    .portion-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    .portion-table th, .portion-table td {
+      padding: 12px;
+      border: 2px solid #dee2e6;
+      text-align: left;
+    }
+    .portion-table th {
+      background: #e9ecef;
+      font-weight: bold;
+      color: #333;
+    }
+    .portion-table td {
+      color: #555;
+    }
+    .portion-table td:first-child {
+      width: 40%;
+      font-weight: bold;
+    }
+    .portion-table td:not(:first-child) {
+      text-align: right;
+    }
+    .portion-table .decrease {
+      color: #dc3545;
+    }
+    .portion-table .increase {
+      color: #28a745;
+    }
+    .portion-table .no-change {
+      color: #333;
+    }
+    .portion-note, .portion-summary {
+      margin: 15px 0;
+      color: #333;
+    }
+    .substitution-card {
+      background: #fff;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+    }
+    .substitution-card h5 {
+      font-size: 16px;
+      margin: 0 0 10px;
+      color: #333;
+    }
+    .substitution-card ul {
+      list-style: disc;
+      padding-left: 20px;
+      margin: 0;
+    }
+    .substitution-card ul li {
+      padding: 8px 0;
+      color: #444;
+    }
+    blockquote {
+      border-left: 4px solid #6c757d;
+      background: #f8f9fa;
+      padding: 15px;
+      margin: 20px 0;
+      border-radius: 4px;
+      color: #444;
+    }
+    footer {
+      margin-top: 30px;
+      padding: 15px;
+      background-color: #e9ecef;
+      text-align: center;
+      color: #333;
+      font-size: 14px;
+      border-top: 1px solid #dee2e6;
+      border-radius: 4px;
+    }
+    @media screen and (max-width: 600px) {
+      body {
+        padding: 10px;
+      }
+      h1 {
+        font-size: 24px;
+      }
+      .container {
+        padding: 15px;
+      }
+      input, select, button {
+        font-size: 14px;
+      }
+      #resultTitle {
+        font-size: 20px;
+      }
+      footer {
+        font-size: 12px;
+        padding: 10px;
+      }
+    }
+    @media print {
+      @page {
+        size: A4;
+        margin: 1cm;
+      }
+      body * {
+        visibility: hidden;
+      }
+      #result, #result * {
+        visibility: visible !important;
+      }
+      #result {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        max-width: 100%;
+        background: white !important;
+        padding: 20px;
+        margin: 0;
+        box-shadow: none !important;
+        color: black !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      #result button {
+        display: none !important;
+      }
+      #calculationResult, #substitutionResult {
+        display: none !important;
+      }
+      #calculationResult[style*="display: block"], #substitutionResult[style*="display: block"] {
+        display: block !important;
+      }
+      footer {
+        display: none !important;
+      }
+      #resultTitle {
+        font-size: 18pt !important;
+        color: black !important;
+        margin-bottom: 15mm !important;
+        text-align: center !important;
+      }
+      .section {
+        border-top: 1px solid #000 !important;
+        margin-top: 10mm !important;
+        padding-top: 5mm !important;
+      }
+      .info-block, .advice-block, .substitution-card {
+        background: white !important;
+        border: 1px solid #000 !important;
+        padding: 5mm !important;
+        margin-bottom: 5mm !important;
+      }
+      .info-block dl {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 3mm !important;
+      }
+      .info-block dt, .info-block dd {
+        color: black !important;
+      }
+      .portion-list li {
+        background: white !important;
+        border: 1px solid #000 !important;
+        padding: 3mm !important;
+        margin-bottom: 2mm !important;
+        display: flex !important;
+      }
+      .portion-list li strong, .portion-list li span, .portion-list li small {
+        color: black !important;
+      }
+      .advice-block.diet, .advice-block.bmi, .advice-block.portion {
+        border-left: 3px solid #000 !important;
+      }
+      .advice-block h4 {
+        font-size: 14pt !important;
+        color: black !important;
+      }
+      .advice-block p {
+        color: black !important;
+      }
+      .portion-table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin: 5mm 0 !important;
+      }
+      .portion-table th, .portion-table td {
+        border: 1px solid #000 !important;
+        padding: 3mm !important;
+        font-size: 12pt !important;
+        color: black !important;
+      }
+      .portion-table th {
+        background: #e9ecef !important;
+      }
+      .portion-table td:first-child {
+        width: 40% !important;
+      }
+      .portion-table td:not(:first-child) {
+        text-align: right !important;
+      }
+      .portion-table .decrease {
+        color: #dc3545 !important;
+      }
+      .portion-table .increase {
+        color: #28a745 !important;
+      }
+      .portion-table .no-change {
+        color: black !important;
+      }
+      .portion-note, .portion-summary {
+        font-size: 12pt !important;
+        color: black !important;
+      }
+      .substitution-card ul {
+        list-style: disc !important;
+        color: black !important;
+      }
+      .substitution-card ul li {
+        color: black !important;
+      }
+      blockquote {
+        border-left: 3px solid #000 !important;
+        background: white !important;
+        padding: 5mm !important;
+        margin: 5mm 0 !important;
+        color: black !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>每日熱量與六大類食物份數計算器</h1>
+  <div class="container">
+    <label for="gender">性別</label>
+    <select id="gender">
+      <option value="male">男性</option>
+      <option value="female">女性</option>
+    </select>
+
+    <label for="age">年齡 (歲，1-120)</label>
+    <input type="number" id="age" min="1" max="120" placeholder="例如：30">
+
+    <label for="height">身高 (公分，50-250)</label>
+    <input type="number" id="height" min="50" max="250" placeholder="例如：170">
+
+    <label for="weight">體重 (公斤，20-200)</label>
+    <input type="number" id="weight" min="20" max="200" placeholder="例如：70">
+
+    <label for="activity">活動量</label>
+    <select id="activity">
+      <option value="1.2">久坐 (幾乎無運動)</option>
+      <option value="1.375">輕度活動 (每週運動1-3天)</option>
+      <option value="1.55">中度活動 (每週運動3-5天)</option>
+      <option value="1.725">高度活動 (每週運動6-7天)</option>
+      <option value="1.9">極高度活動 (非常激烈的運動或體力工作)</option>
+    </select>
+
+    <label for="dietType">飲食類型</label>
+    <select id="dietType">
+      <option value="balanced">均衡飲食</option>
+      <option value="diabetes">糖尿病飲食</option>
+      <option value="highCholesterol">高膽固醇血症飲食</option>
+      <option value="gout">痛風飲食</option>
+      <option value="highTriglycerides">高三酸甘油脂血症飲食</option>
+      <option value="hypertension">高血壓飲食</option>
+    </select>
+
+    <div class="button-group">
+      <button onclick="calculate()">計算</button>
+      <button class="reset" onclick="resetForm()">重置</button>
+      <button onclick="showSubstitutions()">六大類食物代換</button>
+    </div>
+    <div id="error" class="error"></div>
+    <div id="result">
+      <h3 id="resultTitle">計算結果</h3>
+      <div id="calculationResult" class="section">
+        <div class="info-block">
+          <h4>基本資訊</h4>
+          <dl>
+            <dt>BMI：</dt><dd><span id="bmi"></span> (<span id="bmiStatus"></span>)</dd>
+            <dt>理想體重：</dt><dd><span id="idealWeight"></span> 公斤</dd>
+            <dt>基礎代謝率 (BMR)：</dt><dd><span id="bmr"></span> 大卡</dd>
+            <dt>每日所需熱量 (TDEE)：</dt><dd><span id="calories"></span> 大卡</dd>
+            <dt>基準熱量：</dt><dd><span id="baseCalories"></span> 大卡</dd>
+            <dt>六大類食物總熱量：</dt><dd><span id="totalCalories"></span> 大卡</dd>
+          </dl>
+        </div>
+        <div class="info-block">
+          <h4>六大類食物建議份數</h4>
+          <ul class="portion-list">
+            <li><strong>全穀雜糧類</strong><span id="grains"></span> 份<small>（15g 碳水化合物，約70大卡，例如1/4碗糙米飯）</small></li>
+            <li><strong>蔬菜類</strong><span id="vegetables"></span> 份<small>（100g 生重，約25大卡，例如100g綠葉菜）</small></li>
+            <li><strong>水果類</strong><span id="fruits"></span> 份<small>（100g 生重，約60大卡，例如1個小蘋果）</small></li>
+            <li><strong>乳品類</strong><span id="dairy"></span> 份<small>（100g 生重，約100大卡，例如240ml低脂牛奶）</small></li>
+            <li><strong>豆魚蛋肉類</strong><span id="protein"></span> 份<small>（7g 蛋白質，約75大卡，例如50g瘦肉）</small></li>
+            <li><strong>油脂與堅果種子類</strong><span id="fats"></span> 份<small>（5g 脂肪，約45大卡，例如1茶匙油或10g堅果）</small></li>
+          </ul>
+        </div>
+        <section class="advice-block diet">
+          <h4>飲食建議</h4>
+          <p id="dietAdvice"></p>
+        </section>
+        <section class="advice-block bmi">
+          <h4>BMI相關建議</h4>
+          <p id="bmiAdvice"></p>
+        </section>
+        <section id="portionAdviceSection" class="advice-block portion">
+          <h4>份數調整建議</h4>
+          <p id="portionNote" class="portion-note"></p>
+          <table class="portion-table">
+            <thead>
+              <tr>
+                <th>食物類別</th>
+                <th>原始份數</th>
+                <th>調整後份數</th>
+                <th>變化</th>
+              </tr>
+            </thead>
+            <tbody id="portionAdvice"></tbody>
+          </table>
+          <p id="portionSummary" class="portion-summary"></p>
+        </section>
+        <button class="print" onclick="printResult()">列印</button>
+      </div>
+
+      <div id="substitutionResult" class="section" style="display: none;">
+        <section class="info-block">
+          <h4>建議份數</h4>
+          <ul class="portion-list">
+            <li><strong>全穀雜糧類</strong><span id="subGrains"></span> 份<small>（15g 碳水化合物，約70大卡）</small></li>
+            <li><strong>蔬菜類</strong><span id="subVegetables"></span> 份<small>（100g 生重，約25大卡）</small></li>
+            <li><strong>水果類</strong><span id="subFruits"></span> 份<small>（100g 生重，約60大卡）</small></li>
+            <li><strong>乳品類</strong><span id="subDairy"></span> 份<small>（100g 生重，約100大卡）</small></li>
+            <li><strong>豆魚蛋肉類</strong><span id="subProtein"></span> 份<small>（7g 蛋白質，約75大卡）</small></li>
+            <li><strong>油脂與堅果種子類</strong><span id="subFats"></span> 份<small id="fatsDetail"></small></li>
+          </ul>
+        </section>
+        <section class="info-block">
+          <h4>代換清單</h4>
+          <blockquote>
+            <strong>如何判斷一份：</strong> 使用廚房秤精確稱重（如糙米飯50g、瘦肉50g）或量杯（牛奶240ml）。無量具時，可用目測：1碗家用飯碗裝滿生蔬菜約100g（1份蔬菜）；1個拳頭大小的水果（如蘋果100g）約1份；1掌心大小的肉類（50g）或豆腐（100g）約1份豆魚蛋肉；1茶匙油（5ml）或10顆花生（10g）約1份油脂。建議遵循「我的餐盤」比例（1/3全穀、1/3蔬菜、1掌心蛋白質）。
+          </blockquote>
+          <div class="substitution-card">
+            <h5>全穀雜糧類</h5>
+            <ul>
+              <li>糙米飯 1/4碗（50g）</li>
+              <li>全麥麵包 1片（30g）</li>
+              <li>燕麥 3湯匙（30g）</li>
+              <li>玉米 1/2根（100g）</li>
+              <li>地瓜 1/2個（100g）</li>
+              <li>蕎麥麵 1/3碗（50g）</li>
+              <li>薏仁 3湯匙（30g）</li>
+            </ul>
+          </div>
+          <div class="substitution-card">
+            <h5>蔬菜類</h5>
+            <ul>
+              <li>青江菜 100g</li>
+              <li>花椰菜 100g</li>
+              <li>菠菜 100g</li>
+              <li>胡蘿蔔 1/2根（50g）</li>
+              <li>番茄 1個（100g）</li>
+              <li>高麗菜 100g</li>
+              <li>竹筍 100g</li>
+            </ul>
+          </div>
+          <div class="substitution-card">
+            <h5>水果類</h5>
+            <ul>
+              <li>蘋果 1個（100g）</li>
+              <li>香蕉 1/2根（50g）</li>
+              <li>奇異果 1個（75g）</li>
+              <li>葡萄 10顆（100g）</li>
+              <li>橘子 1個（100g）</li>
+              <li>鳳梨 1片（100g）</li>
+              <li>芭樂 1/2個（100g）</li>
+            </ul>
+          </div>
+          <div class="substitution-card">
+            <h5>乳品類</h5>
+            <ul>
+              <li>低脂牛奶 240ml</li>
+              <li>無糖優格 150g</li>
+              <li>低脂起司 2片（40g）</li>
+              <li>豆漿 240ml（無糖）</li>
+              <li>乳酪飲 200ml（低糖）</li>
+            </ul>
+          </div>
+          <div class="substitution-card">
+            <h5>豆魚蛋肉類</h5>
+            <ul>
+              <li>瘦肉 50g</li>
+              <li>雞胸肉 50g</li>
+              <li>魚肉 50g</li>
+              <li>豆腐 100g</li>
+              <li>雞蛋 1個（50g）</li>
+              <li>蝦仁 7隻（50g）</li>
+              <li>毛豆 1/3杯（75g）</li>
+            </ul>
+          </div>
+          <div class="substitution-card">
+            <h5>油脂與堅果種子類</h5>
+            <ul>
+              <li>橄欖油 1茶匙（5g）</li>
+              <li>花生 10顆（10g）</li>
+              <li>腰果 5顆（10g）</li>
+              <li>杏仁 5顆（10g）</li>
+              <li>核桃 2顆（10g）</li>
+              <li>亞麻籽 1茶匙（5g）</li>
+              <li>芝麻 1茶匙（5g）</li>
+            </ul>
+          </div>
+        </section>
+        <button class="print" onclick="printResult()">列印</button>
+      </div>
+    </div>
+  </div>
+  <footer>
+    © 2025 何建鋒營養師 版權所有。未經許可，不得轉載或複製。
+  </footer>
+  <script>
+    let portions = { grains: 0, vegetables: 0, fruits: 0, dairy: 0, protein: 0, fats: 0 };
+    let baseCalories = 0;
+
+    // 每日飲食指南份數表
+    const portionTable = [
+      { calories: 1200, grains: 6, protein: 3, dairy: 1.5, vegetables: 3, fruits: 2, fats: 4 },
+      { calories: 1500, grains: 10, protein: 4, dairy: 1.5, vegetables: 3, fruits: 2, fats: 4 },
+      { calories: 1800, grains: 12, protein: 5, dairy: 1.5, vegetables: 3, fruits: 2, fats: 5 },
+      { calories: 2000, grains: 12, protein: 6, dairy: 1.5, vegetables: 4, fruits: 3, fats: 6 },
+      { calories: 2200, grains: 14, protein: 6, dairy: 1.5, vegetables: 4, fruits: 3.5, fats: 6 },
+      { calories: 2500, grains: 16, protein: 7, dairy: 1.5, vegetables: 5, fruits: 4, fats: 7 },
+      { calories: 2700, grains: 16, protein: 8, dairy: 2, vegetables: 5, fruits: 4, fats: 8 }
+    ];
+
+    // 油脂分配表
+    const fatsAllocation = {
+      1200: { oil: 3, nuts: 1, oilGrams: 15 },
+      1500: { oil: 3, nuts: 1, oilGrams: 15 },
+      1800: { oil: 4, nuts: 1, oilGrams: 20 },
+      2000: { oil: 5, nuts: 1, oilGrams: 25 },
+      2200: { oil: 5, nuts: 1, oilGrams: 25 },
+      2500: { oil: 6, nuts: 1, oilGrams: 30 },
+      2700: { oil: 7, nuts: 1, oilGrams: 35 }
+    };
+
+    // 計算總熱量
+    function calculateTotalCalories(portions) {
+      return (
+        portions.grains * 70 +
+        portions.vegetables * 25 +
+        portions.fruits * 60 +
+        portions.dairy * 100 +
+        portions.protein * 75 +
+        portions.fats * 45
+      );
+    }
+
+    // 獲取最接近的熱量基準
+    function getClosestBaseline(target) {
+      let closest = portionTable[0];
+      let minDiff = Math.abs(target - closest.calories);
+      for (let i = 1; i < portionTable.length; i++) {
+        const diff = Math.abs(target - portionTable[i].calories);
+        if (diff < minDiff || (diff === minDiff && portionTable[i].calories > closest.calories)) {
+          minDiff = diff;
+          closest = portionTable[i];
+        }
+      }
+      return closest.calories;
+    }
+
+    // 根據熱量基準獲取六大類份數
+    function getPortionsFromBaseline(baselineCalories) {
+      const baseline = portionTable.find(item => item.calories === baselineCalories) || portionTable[0];
+      return {
+        grains: baseline.grains,
+        protein: baseline.protein,
+        dairy: baseline.dairy,
+        vegetables: baseline.vegetables,
+        fruits: baseline.fruits,
+        fats: baseline.fats
+      };
+    }
+
+    // 應用飲食類型調整
+    function applyDietTypeAdjustments(portions, dietType) {
+      let adjusted = { ...portions };
+      if (dietType === 'diabetes') {
+        adjusted.grains = Math.max(6, Math.round(adjusted.grains - 1));
+        adjusted.fruits = Math.max(2, adjusted.fruits - 1);
+        adjusted.vegetables = Math.min(6, Math.round(adjusted.vegetables + 1));
+      } else if (dietType === 'highCholesterol' || dietType === 'hypertension') {
+        adjusted.fats = Math.max(3, Math.round(adjusted.fats - 1));
+        adjusted.vegetables = Math.min(6, Math.round(adjusted.vegetables + 1));
+        if (dietType === 'hypertension') {
+          adjusted.vegetables = Math.min(6, Math.round(adjusted.vegetables + 1));
+        }
+      } else if (dietType === 'gout') {
+        adjusted.protein = Math.min(6, Math.round(adjusted.protein));
+      } else if (dietType === 'highTriglycerides') {
+        adjusted.fruits = Math.max(2, adjusted.fruits - 1);
+        adjusted.vegetables = Math.min(6, Math.round(adjusted.vegetables + 1));
+      }
+      const totalCalories = calculateTotalCalories(adjusted);
+      const baselineCalories = getClosestBaseline(totalCalories);
+      if (totalCalories < baselineCalories) {
+        const diff = baselineCalories - totalCalories;
+        if (diff >= 75 && adjusted.protein < (dietType === 'gout' ? 6 : 8)) {
+          adjusted.protein = Math.round(adjusted.protein + diff / 75);
+        } else if (diff >= 70 && adjusted.grains < 16) {
+          adjusted.grains = Math.round(adjusted.grains + diff / 70);
+        }
+      } else if (totalCalories > baselineCalories) {
+        const diff = totalCalories - baselineCalories;
+        if (diff >= 70 && adjusted.grains > 6) {
+          adjusted.grains = Math.round(adjusted.grains - diff / 70);
+        } else if (diff >= 45 && adjusted.fats > 3) {
+          adjusted.fats = Math.round(adjusted.fats - diff / 45);
+        }
+      }
+      adjusted.grains = Math.min(16, Math.max(6, Math.round(adjusted.grains)));
+      adjusted.vegetables = Math.min(6, Math.max(3, Math.round(adjusted.vegetables)));
+      adjusted.fruits = Math.min(dietType === 'diabetes' || dietType === 'highTriglycerides' ? 4 : 5, Math.max(2, baselineCalories === 2200 ? 3.5 : Math.round(adjusted.fruits)));
+      adjusted.dairy = baselineCalories >= 2700 ? Math.min(2, adjusted.dairy) : 1.5;
+      adjusted.protein = Math.min(dietType === 'gout' ? 6 : 8, Math.max(3, Math.round(adjusted.protein)));
+      adjusted.fats = Math.min(dietType === 'highCholesterol' || dietType === 'hypertension' ? 7 : 9, Math.max(3, Math.round(adjusted.fats)));
+      return adjusted;
+    }
+
+    // 調整份數（確保總熱量等於基準熱量）
+    function adjustPortions(portions, baseCalories, dietType, bmi, bmr) {
+      let adjusted = { ...portions };
+      let totalCalories = calculateTotalCalories(adjusted);
+      let attempts = 0;
+      const maxAttempts = 20;
+
+      // BMI調整
+      if (bmi < 18.5) {
+        adjusted.protein = Math.min(dietType === 'gout' ? 6 : 8, Math.round(adjusted.protein + 3));
+        adjusted.grains = Math.min(16, Math.round(adjusted.grains + 2));
+        adjusted.fats = Math.min(dietType === 'highCholesterol' || dietType === 'hypertension' ? 7 : 9, Math.round(adjusted.fats + 2));
+        adjusted.fruits = Math.min(dietType === 'diabetes' || dietType === 'highTriglycerides' ? 4 : 5, baseCalories === 2200 ? 3.5 : Math.round(adjusted.fruits + 1));
+      } else if (bmi >= 24) {
+        adjusted.grains = Math.max(6, Math.round(adjusted.grains - 3));
+        adjusted.fats = Math.max(3, Math.round(adjusted.fats - 2));
+        adjusted.fruits = Math.max(2, baseCalories === 2200 ? 3.5 : Math.round(adjusted.fruits - 1));
+        adjusted.vegetables = Math.max(3, Math.round(adjusted.vegetables));
+        adjusted.protein = Math.max(3, Math.round(adjusted.protein));
+      }
+
+      // 確保總熱量匹配基準熱量且≥BMR
+      totalCalories = calculateTotalCalories(adjusted);
+      while (Math.abs(totalCalories - baseCalories) > 5 && attempts < maxAttempts) {
+        const diff = baseCalories - totalCalories;
+        const proteinShare = diff * 0.5 / 75;
+        const grainsShare = diff * 0.3 / 70;
+        const fatsShare = diff * 0.1 / 45;
+        const fruitsShare = diff * 0.05 / 60;
+        const vegetablesShare = diff * 0.05 / 25;
+
+        if (diff > 0) {
+          if (adjusted.protein < (dietType === 'gout' ? 6 : 8)) adjusted.protein = Math.round(adjusted.protein + proteinShare);
+          if (adjusted.grains < 16) adjusted.grains = Math.round(adjusted.grains + grainsShare);
+          if (adjusted.fats < (dietType === 'highCholesterol' || dietType === 'hypertension' ? 7 : 9)) adjusted.fats = Math.round(adjusted.fats + fatsShare);
+          if (adjusted.fruits < (dietType === 'diabetes' || dietType === 'highTriglycerides' ? 4 : 5)) adjusted.fruits = baseCalories === 2200 ? 3.5 : Math.round(adjusted.fruits + fruitsShare);
+          if (adjusted.vegetables < 6) adjusted.vegetables = Math.round(adjusted.vegetables + vegetablesShare);
+        } else if (diff < 0) {
+          if (adjusted.grains > 6) adjusted.grains = Math.round(adjusted.grains - (-grainsShare));
+          if (adjusted.fats > 3) adjusted.fats = Math.round(adjusted.fats - (-fatsShare));
+          if (adjusted.protein > 3) adjusted.protein = Math.round(adjusted.protein - (-proteinShare));
+          if (adjusted.fruits > 2) adjusted.fruits = baseCalories === 2200 ? 3.5 : Math.round(adjusted.fruits - (-fruitsShare));
+          if (adjusted.vegetables > 3) adjusted.vegetables = Math.round(adjusted.vegetables - (-vegetablesShare));
+        }
+
+        adjusted.grains = Math.min(16, Math.max(6, Math.round(adjusted.grains)));
+        adjusted.vegetables = Math.min(6, Math.max(3, Math.round(adjusted.vegetables)));
+        adjusted.fruits = Math.min(dietType === 'diabetes' || dietType === 'highTriglycerides' ? 4 : 5, Math.max(2, baseCalories === 2200 ? 3.5 : Math.round(adjusted.fruits)));
+        adjusted.dairy = baseCalories >= 2700 ? Math.min(2, adjusted.dairy) : 1.5;
+        adjusted.protein = Math.min(dietType === 'gout' ? 6 : 8, Math.max(3, Math.round(adjusted.protein)));
+        adjusted.fats = Math.min(dietType === 'highCholesterol' || dietType === 'hypertension' ? 7 : 9, Math.max(3, Math.round(adjusted.fats)));
+
+        totalCalories = calculateTotalCalories(adjusted);
+        if (totalCalories < bmr) {
+          const bmrDiff = bmr - totalCalories;
+          if (adjusted.protein < (dietType === 'gout' ? 6 : 8)) adjusted.protein = Math.round(adjusted.protein + (bmrDiff * 0.6 / 75));
+          if (adjusted.grains < 16) adjusted.grains = Math.round(adjusted.grains + (bmrDiff * 0.3 / 70));
+          if (adjusted.fats < (dietType === 'highCholesterol' || dietType === 'hypertension' ? 7 : 9)) adjusted.fats = Math.round(adjusted.fats + (bmrDiff * 0.1 / 45));
+          adjusted.protein = Math.min(dietType === 'gout' ? 6 : 8, Math.max(3, Math.round(adjusted.protein)));
+          adjusted.grains = Math.min(16, Math.max(6, Math.round(adjusted.grains)));
+          adjusted.fats = Math.min(dietType === 'highCholesterol' || dietType === 'hypertension' ? 7 : 9, Math.max(3, Math.round(adjusted.fats)));
+        }
+
+        totalCalories = calculateTotalCalories(adjusted);
+        attempts++;
+      }
+
+      totalCalories = calculateTotalCalories(adjusted);
+      if (Math.abs(totalCalories - baseCalories) <= 70) {
+        const diff = baseCalories - totalCalories;
+        if (diff > 0) {
+          if (adjusted.protein < (dietType === 'gout' ? 6 : 8)) adjusted.protein = Math.round(adjusted.protein + (diff / 75));
+          else if (adjusted.grains < 16) adjusted.grains = Math.round(adjusted.grains + (diff / 70));
+        } else if (diff < 0) {
+          if (adjusted.grains > 6) adjusted.grains = Math.round(adjusted.grains - (-diff / 70));
+          else if (adjusted.protein > 3) adjusted.protein = Math.round(adjusted.protein - (-diff / 75));
+        }
+        adjusted.grains = Math.min(16, Math.max(6, Math.round(adjusted.grains)));
+        adjusted.protein = Math.min(dietType === 'gout' ? 6 : 8, Math.max(3, Math.round(adjusted.protein)));
+      }
+
+      return adjusted;
+    }
+
+    // 重置表單
+    function resetForm() {
+      document.getElementById('gender').value = 'male';
+      document.getElementById('age').value = '';
+      document.getElementById('height').value = '';
+      document.getElementById('weight').value = '';
+      document.getElementById('activity').value = '1.2';
+      document.getElementById('dietType').value = 'balanced';
+      document.getElementById('error').style.display = 'none';
+      document.getElementById('result').style.display = 'none';
+      document.getElementById('calculationResult').style.display = 'none';
+      document.getElementById('substitutionResult').style.display = 'none';
+      document.getElementById('portionAdviceSection').classList.remove('show');
+      portions = { grains: 0, vegetables: 0, fruits: 0, dairy: 0, protein: 0, fats: 0 };
+      document.getElementById('subGrains').textContent = '';
+      document.getElementById('subVegetables').textContent = '';
+      document.getElementById('subFruits').textContent = '';
+      document.getElementById('subDairy').textContent = '';
+      document.getElementById('subProtein').textContent = '';
+      document.getElementById('subFats').textContent = '';
+      document.getElementById('fatsDetail').textContent = '';
+    }
+
+    // 顯示六大類食物代換
+    function showSubstitutions() {
+      const resultDiv = document.getElementById('result');
+      const calculationResult = document.getElementById('calculationResult');
+      const substitutionResult = document.getElementById('substitutionResult');
+      const portionAdviceSection = document.getElementById('portionAdviceSection');
+      if (!portions.grains && !portions.vegetables && !portions.fruits && !portions.dairy && !portions.protein && !portions.fats) {
+        alert('請先點擊「計算」按鈕以生成食物份數！');
+        return;
+      }
+      document.getElementById('subGrains').textContent = portions.grains.toFixed(0);
+      document.getElementById('subVegetables').textContent = portions.vegetables.toFixed(0);
+      document.getElementById('subFruits').textContent = portions.fruits.toFixed(baseCalories === 2200 ? 1 : 0);
+      document.getElementById('subDairy').textContent = portions.dairy.toFixed(1);
+      document.getElementById('subProtein').textContent = portions.protein.toFixed(0);
+      document.getElementById('subFats').textContent = portions.fats.toFixed(0);
+      const fatsInfo = fatsAllocation[baseCalories] || { oil: portions.fats - 1, nuts: 1, oilGrams: (portions.fats - 1) * 5 };
+      document.getElementById('fatsDetail').textContent = `（${fatsInfo.oil}茶匙油（約${fatsInfo.oilGrams}公克）+ ${fatsInfo.nuts}份堅果種子，1份=5g脂肪，約45大卡）`;
+      document.getElementById('resultTitle').textContent = '六大類食物建議份數與代換';
+      calculationResult.style.display = 'none';
+      substitutionResult.style.display = 'block';
+      portionAdviceSection.classList.remove('show');
+      resultDiv.style.display = 'block';
+    }
+
+    // 列印結果
+    function printResult() {
+      const resultDiv = document.getElementById('result');
+      if (resultDiv.style.display !== 'block') {
+        alert('請先點擊「計算」或「六大類食物代換」以生成結果！');
+        return;
+      }
+
+      // 強制DOM重繪
+      resultDiv.offsetHeight;
+
+      // 延遲列印以確保樣式渲染
+      setTimeout(() => {
+        window.print();
+      }, 500);
+    }
+
+    // 計算功能
+    function calculate() {
+      const gender = document.getElementById('gender').value;
+      const age = parseFloat(document.getElementById('age').value);
+      const height = parseFloat(document.getElementById('height').value);
+      const weight = parseFloat(document.getElementById('weight').value);
+      const activity = parseFloat(document.getElementById('activity').value);
+      const dietType = document.getElementById('dietType').value;
+      const errorDiv = document.getElementById('error');
+      const resultDiv = document.getElementById('result');
+      const calculationResult = document.getElementById('calculationResult');
+      const substitutionResult = document.getElementById('substitutionResult');
+      const portionAdviceSection = document.getElementById('portionAdviceSection');
+
+      // 驗證輸入
+      let errorMsg = '';
+      if (isNaN(age) || isNaN(height) || isNaN(weight)) {
+        errorMsg = '請填寫所有欄位。';
+      } else if (age < 1 || age > 120) {
+        errorMsg = '年齡需介於1-120歲。';
+      } else if (height < 50 || height > 250) {
+        errorMsg = '身高需介於50-250公分。';
+      } else if (weight < 20 || weight > 200) {
+        errorMsg = '體重需介於20-200公斤。';
+      } else if (age <= 0 || height <= 0 || weight <= 0) {
+        errorMsg = '輸入值必須為正數。';
+      }
+
+      if (errorMsg) {
+        errorDiv.textContent = errorMsg;
+        errorDiv.style.display = 'block';
+        resultDiv.style.display = 'none';
+        return;
+      } else {
+        errorDiv.style.display = 'none';
+      }
+
+      // 計算BMI
+      const heightInMeters = height / 100;
+      const bmi = parseFloat((weight / (heightInMeters * heightInMeters)).toFixed(1));
+      let bmiStatus;
+      if (bmi < 18.5) {
+        bmiStatus = '過輕';
+      } else if (bmi >= 18.5 && bmi < 24) {
+        bmiStatus = '正常';
+      } else if (bmi >= 24 && bmi < 27) {
+        bmiStatus = '過重';
+      } else if (bmi >= 27 && bmi < 30) {
+        bmiStatus = '輕度肥胖';
+      } else if (bmi >= 30 && bmi < 35) {
+        bmiStatus = '中度肥胖';
+      } else {
+        bmiStatus = '重度肥胖';
+      }
+
+      // 計算理想體重 (BMI 22)
+      const idealWeight = Math.round(22 * heightInMeters * heightInMeters * 10) / 10;
+
+      // 計算基礎代謝率 (BMR) 使用 Mifflin-St Jeor 公式
+      let bmr;
+      if (gender === 'male') {
+        bmr = 10 * weight + 6.25 * height - 5 * age + 5;
+      } else {
+        bmr = 10 * weight + 6.25 * height - 5 * age - 161;
+      }
+      bmr = Math.round(bmr);
+
+      // 計算總熱量需求 (TDEE)
+      const tdee = Math.round(bmr * activity);
+
+      // 根據BMI調整目標熱量
+      let targetCalories = tdee;
+      let calorieAdjustment = '';
+      let originalBaseline = getClosestBaseline(tdee);
+      let portionNote = '';
+      if (bmi < 18.5) {
+        targetCalories = tdee + 500;
+        calorieAdjustment = '您的BMI過輕，基準熱量已增加500大卡以促進增重。建議每週2-3次阻力訓練，採少量多餐（5-6餐），選擇高營養密度食物（如糙米、香蕉、全脂乳品、雞胸、堅果）。';
+        portionNote = `因您的 BMI 過低（${bmi}），基準熱量已增加 500 大卡（從 ${tdee} 大卡調整至 ${targetCalories} 大卡）。建議增加蛋白質（如每日50g雞胸或100g豆腐）或全穀雜糧（如每日50g糙米或30g燕麥）以補充熱量，遵循「我的餐盤」比例（1/3全穀、1/3蔬菜、1掌心蛋白質）。份數調整如下：`;
+      } else if (bmi >= 24) {
+        targetCalories = Math.max(bmr, tdee - 500);
+        calorieAdjustment = '您的BMI過高，基準熱量已減少500大卡以促進減重。建議每週150分鐘中強度有氧運動及2-3次阻力訓練，選擇低能量密度食物（如燕麥、菠菜、蘋果、低脂魚），記錄飲食日誌。';
+        portionNote = `因您的 BMI 過高（${bmi}），基準熱量已減少 500 大卡（從 ${tdee} 大卡調整至 ${targetCalories} 大卡），份數調整如下：`;
+      } else {
+        calorieAdjustment = '您的BMI正常，基準熱量依TDEE設定，建議遵循所選飲食類型，保持均衡飲食及規律運動。';
+      }
+
+      // 查詢基準熱量與份數
+      baseCalories = getClosestBaseline(targetCalories);
+      portions = getPortionsFromBaseline(baseCalories);
+
+      // 應用飲食類型調整並確保熱量匹配
+      portions = applyDietTypeAdjustments(portions, dietType);
+      portions = adjustPortions(portions, baseCalories, dietType, bmi, bmr);
+
+      // 計算總熱量
+      const totalCalories = calculateTotalCalories(portions);
+
+      // 生成份數調整建議（僅BMI異常時）
+      let portionAdvice = '';
+      if (bmi < 18.5 || bmi >= 24) {
+        const categories = [
+          { name: '全穀雜糧類', key: 'grains', format: 'toFixed(0)' },
+          { name: '蔬菜類', key: 'vegetables', format: 'toFixed(0)' },
+          { name: '水果類', key: 'fruits', format: baseCalories === 2200 ? 'toFixed(1)' : 'toFixed(0)' },
+          { name: '乳品類', key: 'dairy', format: 'toFixed(1)' },
+          { name: '豆魚蛋肉類', key: 'protein', format: 'toFixed(0)' },
+          { name: '油脂與堅果種子類', key: 'fats', format: 'toFixed(0)' }
+        ];
+        let originalPortions = getPortionsFromBaseline(originalBaseline);
+        originalPortions = applyDietTypeAdjustments(originalPortions, dietType);
+        originalPortions = adjustPortions(originalPortions, originalBaseline, dietType, 18.5, bmr);
+        portionAdvice = categories.map(cat => {
+          const original = eval(`originalPortions.${cat.key}.${cat.format}`);
+          const adjusted = eval(`portions.${cat.key}.${cat.format}`);
+          const diff = originalPortions[cat.key] - portions[cat.key];
+          let changeClass = 'no-change';
+          let changeText = '無變化';
+          if (diff > 0) {
+            changeClass = 'decrease';
+            changeText = `減少 ${Math.abs(diff).toFixed(cat.key === 'dairy' || (cat.key === 'fruits' && baseCalories === 2200) ? 1 : 0)} 份`;
+          } else if (diff < 0) {
+            changeClass = 'increase';
+            changeText = `增加 ${Math.abs(diff).toFixed(cat.key === 'dairy' || (cat.key === 'fruits' && baseCalories === 2200) ? 1 : 0)} 份`;
+          }
+          return `
+            <tr>
+              <td>${cat.name}</td>
+              <td>${original} 份</td>
+              <td class="${changeClass}">${adjusted} 份</td>
+              <td class="${changeClass}">${changeText}</td>
+            </tr>
+          `;
+        }).join('');
+        portionAdviceSection.classList.add('show');
+      } else {
+        portionAdviceSection.classList.remove('show');
+      }
+
+      // 設置飲食建議
+      let dietAdvice = '';
+      if (dietType === 'diabetes') {
+        dietAdvice = '糖尿病飲食建議：選擇低升糖指數食物（如糙米、燕麥、綠葉菜），減少精製糖及高糖水果（如葡萄、芒果），每餐固定份量，避免血糖波動。';
+      } else if (dietType === 'highCholesterol') {
+        dietAdvice = '高膽固醇飲食建議：減少飽和脂肪（如肥肉、奶油），選擇富含Omega-3的食物（如鮭魚、亞麻籽），增加膳食纖維（如燕麥、蘋果）。';
+      } else if (dietType === 'gout') {
+        dietAdvice = '痛風飲食建議：限制高普林食物（如內臟、沙丁魚），選擇低普林蛋白質（如雞蛋、豆腐），多攝取高鉀蔬菜（如菠菜、地瓜）。';
+      } else if (dietType === 'highTriglycerides') {
+        dietAdvice = '高三酸甘油脂飲食建議：減少精製碳水化合物及高糖水果（如香蕉、鳳梨），選擇高纖維食物（如花椰菜、奇異果），增加Omega-3攝取（如鯖魚）。';
+      } else if (dietType === 'hypertension') {
+        dietAdvice = '高血壓飲食建議：減少鈉攝取（避免加工食品、醬料），選擇高鉀食物（如香蕉、菠菜），遵循DASH飲食（多全穀、蔬菜）。';
+      } else {
+        dietAdvice = '均衡飲食建議：遵循《每日飲食指南》，每日攝取六大類食物，保持規律運動，避免過量油脂及精製糖。';
+      }
+
+      // 設置BMI建議
+      let bmiAdvice = '';
+      if (bmi < 18.5) {
+        bmiAdvice = '您的BMI過低，建議增加熱量攝取（每日增加500大卡），選擇高營養密度食物（如全穀、堅果、全脂乳品），並進行阻力訓練以增肌。';
+      } else if (bmi >= 24) {
+        bmiAdvice = '您的BMI過高，建議減少熱量攝取（每日減少500大卡），增加有氧運動及高纖維食物（如蔬菜、水果），記錄飲食日誌以追蹤進度。';
+      } else {
+        bmiAdvice = '您的BMI正常，建議維持均衡飲食，每週至少150分鐘中強度運動，保持健康體重。';
+      }
+
+      // 更新結果顯示
+      document.getElementById('bmi').textContent = bmi;
+      document.getElementById('bmiStatus').textContent = bmiStatus;
+      document.getElementById('idealWeight').textContent = idealWeight;
+      document.getElementById('bmr').textContent = bmr;
+      document.getElementById('calories').textContent = tdee;
+      document.getElementById('baseCalories').textContent = baseCalories;
+      document.getElementById('totalCalories').textContent = totalCalories;
+      document.getElementById('grains').textContent = portions.grains.toFixed(0);
+      document.getElementById('vegetables').textContent = portions.vegetables.toFixed(0);
+      document.getElementById('fruits').textContent = portions.fruits.toFixed(baseCalories === 2200 ? 1 : 0);
+      document.getElementById('dairy').textContent = portions.dairy.toFixed(1);
+      document.getElementById('protein').textContent = portions.protein.toFixed(0);
+      document.getElementById('fats').textContent = portions.fats.toFixed(0);
+      document.getElementById('dietAdvice').textContent = dietAdvice;
+      document.getElementById('bmiAdvice').textContent = bmiAdvice;
+      document.getElementById('portionNote').textContent = portionNote;
+      document.getElementById('portionAdvice').innerHTML = portionAdvice;
+      document.getElementById('portionSummary').textContent = '調整後的份數已符合您的熱量需求及飲食類型，請參考代換清單選擇食物。';
+      document.getElementById('resultTitle').textContent = '計算結果';
+      calculationResult.style.display = 'block';
+      substitutionResult.style.display = 'none';
+      resultDiv.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
